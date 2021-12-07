@@ -16,6 +16,7 @@ float* d_A, * d_B, * d_C;
 
 void h_multiply(float* A, float* B, float* C);
 __global__ void d_multiply0(float* A, float* B, float* C);
+__global__ void d_multiply1(float* A, float* B, float* C); 
 
 // メイン関数．
 int main()
@@ -89,12 +90,37 @@ void h_multiply(float* A, float* B, float* C)
 
 __global__ void d_multiply0(float* A, float* B, float* C)
 {
-	unsigned int r = blockDim.y * blockIdx.y + threadIdx.y;
-	unsigned int c = blockDim.x * blockIdx.x + threadIdx.x;
+	unsigned int r = blockDim.y * blockIdx.y + threadIdx.y; // スレッドが担当する行番号．
+	unsigned int c = blockDim.x * blockIdx.x + threadIdx.x; // スレッドが担当する列番号．
 	unsigned int i;
 	float tmp;
 	tmp = 0.0f;
 	for (i = 0; i < WIDTH; i++)
 		tmp += A[WIDTH * r + i] * B[WIDTH * i + c];
 	C[WIDTH * r + c] = tmp;
+}
+
+__global__ void d_multiply1(float* A, float* B, float* C)
+{
+	unsigned int r = blockDim.y * blockIdx.y + threadIdx.y;
+	unsigned int c = blockDim.x * blockIdx.x + threadIdx.x;
+	unsigned int i, j;
+	float tmp;
+	__shared__ float s_A[BLOCK][BLOCK];
+	__shared__ float s_B[BLOCK][BLOCK];
+	tmp = 0.0f;
+	for (i = 0; i < WIDTH; i++) {
+
+		// 行列の一部をシェアードメモリに確保．
+		s_A[threadIdx.y][threadIdx.x] = A[WIDTH * r + i + threadIdx.x];
+		s_B[threadIdx.y][threadIdx.y] = A[WIDTH * (i + threadIdx.y) + c];
+		__syncthreads();
+
+		// シェアードメモリで積を計算．
+		for (j = 0; j < BLOCK; j++)
+			tmp += s_A[threadIdx.y][j] * s_B[j][threadIdx.x];
+		__syncthreads();
+	}
+	C[WIDTH * r + c] = tmp;
+
 }
